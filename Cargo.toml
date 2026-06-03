@@ -1,0 +1,125 @@
+[package]
+name        = "esp32s3-cam-async"
+version     = "0.1.0"
+edition     = "2024"
+authors     = ["Carlos Barrales Ruiz <cbruiz@gmail.com>"]
+description = "Async LCD-CAM DMA camera driver for ESP32-S3 with optional built-in capture state machine"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/cbruiz/esp32s3-cam-async"
+homepage    = "https://github.com/cbruiz/esp32s3-cam-async"
+documentation = "https://docs.rs/esp32s3-cam-async"
+readme      = "README.md"
+keywords    = ["esp32s3", "camera", "async", "embedded", "dma"]
+categories  = ["embedded", "hardware-support", "no-std", "asynchronous"]
+# Matches the base Rust version of the `esp` toolchain. This crate requires
+# Espressif's Xtensa fork (channel = "esp"); it cannot be built with stable Rust.
+rust-version = "1.95.0"
+# Keep the published package to the crate itself: drop local tooling/dev config
+# that is irrelevant to consumers. README.md and docs/ stay (the docs reference
+# them).
+exclude      = [".github/", "*.sh", ".cargo/", "espflash.toml", ".gitignore", ".idea/"]
+
+# This crate is experimental: the API is unstable and may change without
+# notice, and it is validated only on real hardware. crates.io renders this
+# maintenance status on the crate page.
+[badges]
+maintenance = { status = "experimental" }
+
+[package.metadata.docs.rs]
+targets  = []
+features = ["defmt"]
+
+# esp-hal's build.rs sets the `is_debug_build` cfg whenever its OPT_LEVEL is "0"
+# or "1", which gates a "use --release" warning. `cargo publish --dry-run` (and
+# any plain `cargo build`) verifies with the dev profile (opt-level 0), so the
+# warning fires. Bumping ONLY esp-hal to opt-level 2 in the dev profile clears
+# the cfg and silences it. Profile tables only apply when this crate is the
+# build root, so this never affects downstream consumers.
+[profile.dev.package.esp-hal]
+opt-level = 2
+
+# This is a no_std crate built only for xtensa-esp32s3-none-elf, which ships no
+# `test`/`bench` crate and no test-profile panic handler. There is no unit-test
+# suite (behavior is validated by flashing the examples to real hardware), so
+# disable the lib test/bench/doctest harnesses — otherwise `cargo test` fails to
+# compile them with "can't find crate for `test`" / missing `#[panic_handler]`.
+[lib]
+test    = false
+bench   = false
+doctest = false
+
+[features]
+# Default = the minimal useful driver: OV2640 sensor + JPEG extractor, WITHOUT
+# logging. `defmt` is deliberately left out so a consumer never drags in defmt
+# unless they ask for it (`features = ["defmt"]`). Opt out with
+# `default-features = false`.
+default     = ["ov2640", "jfif"]
+# Optional defmt logging throughout the driver (off by default).
+defmt       = ["dep:defmt", "esp-hal/defmt"]
+psram_dma   = []
+# Enables the OV2640 sensor driver (I2C/SCCB init, register tables).
+ov2640      = ["dep:embedded-hal"]
+# Enables the streaming JPEG frame extractor (JpegStreamParser + RFC 2435 utils).
+jfif        = []
+
+# Only the dependencies the LIBRARY itself compiles against. Everything the
+# examples need (runtime, WiFi, logger, bootloader header) lives in
+# [dev-dependencies] so it never reaches downstream consumers of the crate.
+[dependencies]
+esp-hal      = { version = "1.1", features = ["unstable", "rt", "critical-section", "esp32s3"] }
+embassy-time = { version = "0.5" }
+# Optional, gated by the `defmt` feature — driver logging only.
+defmt        = { version = "1.1", optional = true }
+# Optional, pulled in by the `ov2640` feature — the sensor driver needs the
+# embedded-hal `DelayNs` trait for its I2C/SCCB init sequence.
+embedded-hal = { version = "1.0", optional = true }
+
+# Dev-dependencies are ONLY compiled for the examples/tests and are never part
+# of the published crate's dependency graph — consumers don't get any of these.
+# Cargo does not allow dev-dependencies to be optional, so they cannot be gated
+# per-example with features; which example builds is instead controlled by the
+# `required-features` (on the library's own features) below.
+[dev-dependencies]
+# --- Runtime + logging scaffolding shared by ALL examples ---
+embassy-executor = { version = "0.10", features = ["executor-thread"] }
+esp-rtos         = { version = "0.3", features = ["esp32s3", "embassy", "esp-radio", "esp-alloc"] }
+static_cell      = "2.1"
+# defmt logging over UART0 (the ESP32-S3-CAM is reached through a USB-UART
+# bridge, not the native USB Serial/JTAG): esp-println's `defmt-espflash` feature
+# installs the defmt global logger, and esp-backtrace routes panics through defmt.
+esp-println      = { version = "0.17", default-features = false, features = ["esp32s3", "uart", "defmt-espflash"] }
+esp-backtrace    = { version = "0.19", features = ["esp32s3", "panic-handler", "defmt"] }
+# Provides the esp_app_desc!() image header the ESP-IDF 2nd-stage bootloader expects.
+esp-bootloader-esp-idf = { version = "0.5", default-features = false, features = ["esp32s3"] }
+
+# --- Additional crates used only by the `http_mjpeg_server` example (WiFi + net) ---
+esp-radio         = { version = "0.18", default-features = false, features = ["esp32s3", "wifi", "unstable", "defmt"] }
+esp-alloc         = { version = "0.10", default-features = false, features = ["esp32s3", "global-allocator", "internal-heap-stats", "compat"] }
+embassy-net       = { version = "0.9", features = ["tcp", "dhcpv4", "medium-ethernet", "proto-ipv4", "defmt"] }
+embassy-sync      = { version = "0.8" }
+embassy-futures   = { version = "0.1" }
+embedded-io-async = { version = "0.7" }
+heapless          = "0.9"
+
+# `required-features` gates each example on the library features it exercises,
+# so e.g. `cargo build --examples` only builds an example once its features are
+# on. All examples log through defmt, hence `defmt` is required everywhere.
+[[example]]
+name              = "capture_rgb565"
+test              = false
+required-features = ["ov2640", "defmt"]
+
+[[example]]
+name              = "capture_jpeg"
+test              = false
+required-features = ["ov2640", "jfif", "defmt"]
+
+[[example]]
+name              = "capture_yuv422"
+test              = false
+required-features = ["ov2640", "defmt"]
+
+[[example]]
+name              = "http_mjpeg_server"
+test              = false
+required-features = ["ov2640", "jfif", "defmt"]
