@@ -1,0 +1,16 @@
+# espflash configuration, picked up when espflash runs from this directory
+# (i.e. when flashing the examples via the crate-local `.cargo/config.toml`
+# runner). It is scoped to this crate and does not affect the workspace root.
+#
+# NOTE: espflash has no config key for the *monitor* log format — defmt decoding
+# is a CLI-only flag, so it stays in `.cargo/config.toml`'s runner as
+# `--log-format defmt`. This file only tunes the flashing/image settings.
+#
+# It is also only read when espflash runs with this directory as the CWD; if your
+# IDE invokes cargo from the workspace root, espflash auto-detects the flash size
+# and ignores this file.
+
+baudrate = 115200
+
+[flash]
+size = "16MB"
