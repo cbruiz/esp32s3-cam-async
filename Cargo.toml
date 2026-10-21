@@ -125,3 +125,8 @@ required-features = ["ov2640", "defmt"]
 name              = "http_mjpeg_server"
 test              = false
 required-features = ["ov2640", "jfif", "defmt"]
+
+[[example]]
+name              = "detect_ov3660"
+test              = false
+required-features = ["ov3660", "defmt"]
