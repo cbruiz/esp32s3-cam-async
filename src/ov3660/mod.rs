@@ -1,5 +1,5 @@
-use esp_hal::Blocking;
 use esp_hal::i2c::master::{Error, I2c};
+use esp_hal::Blocking;
 
 pub const OV3660_ADDR: u8 = 0x3c;
 pub const OV3660_PID: u16 = 0x3660;
@@ -24,6 +24,12 @@ impl Ov3660 {
         i2c.write_read(self.address, &reg.to_be_bytes(), &mut value)?;
 
         Ok(value[0])
+    }
+
+    pub fn write_reg(&self, i2c: &mut I2c<'_, Blocking>, reg: u16, value: u8) -> Result<(), Error> {
+        let [high, low] = reg.to_be_bytes();
+
+        i2c.write(self.address, &[high, low, value])
     }
 
     pub fn read_id(&self, i2c: &mut I2c<'_, Blocking>) -> Result<u16, Error> {
