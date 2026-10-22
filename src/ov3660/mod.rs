@@ -1,3 +1,4 @@
+mod init;
 pub mod registers;
 mod tables;
 

@@ -69,20 +69,58 @@ fn main() -> ! {
 
     let sensor = Ov3660::new();
 
-    let delay = esp_hal::delay::Delay::new();
+    let mut delay = esp_hal::delay::Delay::new();
 
-    // Allow the sensor to settle after XCLK initialization.
+    // Allow the sensor to stabilize after XCLK starts.
     delay.delay_millis(100u32);
 
+    // Verify the sensor before initialization.
     match sensor.read_id(&mut i2c) {
         Ok(OV3660_PID) => {
             defmt::info!("OV3660 detected: PID=0x3660");
         }
         Ok(pid) => {
             defmt::error!("Unexpected sensor PID: 0x{:04x}", pid);
+            loop {
+                core::hint::spin_loop();
+            }
         }
         Err(err) => {
             defmt::error!("Sensor detection failed: {:?}", defmt::Debug2Format(&err));
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    // Apply OV3660 default register configuration.
+    defmt::info!("Initializing OV3660...");
+
+    match sensor.init(&mut i2c, &mut delay) {
+        Ok(()) => {
+            defmt::info!("OV3660 initialization completed");
+        }
+        Err(err) => {
+            defmt::error!(
+                "OV3660 initialization failed: {:?}",
+                defmt::Debug2Format(&err)
+            );
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    // Check that the sensor remains responsive after initialization.
+    match sensor.read_id(&mut i2c) {
+        Ok(OV3660_PID) => {
+            defmt::info!("OV3660 post-init PID check: PASS");
+        }
+        Ok(pid) => {
+            defmt::error!("Unexpected post-init PID: 0x{:04x}", pid);
+        }
+        Err(err) => {
+            defmt::error!("Post-init PID read failed: {:?}", defmt::Debug2Format(&err));
         }
     }
 
