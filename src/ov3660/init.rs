@@ -92,8 +92,10 @@ impl Ov3660 {
     /// Reset the sensor and apply its default register configuration.
     pub fn init(&self, i2c: &mut I2c<'_, Blocking>, delay: &mut impl DelayNs) -> Result<(), Error> {
         self.reset(i2c, delay)?;
-
         self.apply_sequence(i2c, delay, DEFAULT_REGS)?;
+
+        self.set_default_ae_level(i2c)?;
+        delay.delay_ms(100);
 
         Ok(())
     }
@@ -284,5 +286,24 @@ impl Ov3660 {
 
     pub fn set_jpeg_quality(&self, i2c: &mut I2c<'_, Blocking>, quality: u8) -> Result<(), Error> {
         self.write_reg(i2c, COMPRESSION_CTRL07, quality & 0x3f)
+    }
+
+    fn set_default_ae_level(&self, i2c: &mut I2c<'_, Blocking>) -> Result<(), Error> {
+        const TARGET: u16 = 55;
+
+        const LOW: u8 = (TARGET * 23 / 25) as u8;
+        const HIGH: u8 = (TARGET * 27 / 25) as u8;
+
+        const FAST_LOW: u8 = LOW >> 1;
+        const FAST_HIGH: u8 = HIGH << 1;
+
+        self.write_reg(i2c, 0x3a0f, HIGH)?;
+        self.write_reg(i2c, 0x3a10, LOW)?;
+        self.write_reg(i2c, 0x3a1b, HIGH)?;
+        self.write_reg(i2c, 0x3a1e, LOW)?;
+        self.write_reg(i2c, 0x3a11, FAST_HIGH)?;
+        self.write_reg(i2c, 0x3a1f, FAST_LOW)?;
+
+        Ok(())
     }
 }
