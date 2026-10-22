@@ -62,7 +62,7 @@ ov2640      = ["dep:embedded-hal"]
 # Enables the streaming JPEG frame extractor (JpegStreamParser + RFC 2435 utils).
 jfif        = []
 # Enables the OV3660 sensor driver (I2C/SCCB init, register tables).
-ov3660 = []
+ov3660      = ["dep:embedded-hal"]
 
 # Only the dependencies the LIBRARY itself compiles against. Everything the
 # examples need (runtime, WiFi, logger, bootloader header) lives in
