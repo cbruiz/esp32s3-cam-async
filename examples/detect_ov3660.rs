@@ -111,6 +111,21 @@ fn main() -> ! {
         }
     }
 
+    defmt::info!("Configuring JPEG format...");
+
+    match sensor.set_jpeg_format(&mut i2c, &mut delay) {
+        Ok(()) => {
+            defmt::info!("JPEG register sequence applied");
+        }
+        Err(err) => {
+            defmt::error!("JPEG configuration failed: {:?}", defmt::Debug2Format(&err));
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
     // Check that the sensor remains responsive after initialization.
     match sensor.read_id(&mut i2c) {
         Ok(OV3660_PID) => {

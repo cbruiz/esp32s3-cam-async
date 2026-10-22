@@ -44,6 +44,60 @@ impl Ov3660 {
         Ok(())
     }
 
+    pub fn write_reg16(
+        &self,
+        i2c: &mut I2c<'_, Blocking>,
+        reg: u16,
+        value: u16,
+    ) -> Result<(), Error> {
+        let [high, low] = value.to_be_bytes();
+
+        self.write_reg(i2c, reg, high)?;
+        self.write_reg(i2c, reg + 1, low)?;
+
+        Ok(())
+    }
+
+    pub fn write_addr_reg(
+        &self,
+        i2c: &mut I2c<'_, Blocking>,
+        reg: u16,
+        x_value: u16,
+        y_value: u16,
+    ) -> Result<(), Error> {
+        self.write_reg16(i2c, reg, x_value)?;
+        self.write_reg16(i2c, reg + 2, y_value)?;
+
+        Ok(())
+    }
+
+    pub fn set_reg_bits(
+        &self,
+        i2c: &mut I2c<'_, Blocking>,
+        reg: u16,
+        offset: u8,
+        mask: u8,
+        value: u8,
+    ) -> Result<(), Error> {
+        let current = self.read_reg(i2c, reg)?;
+
+        let shifted_mask = mask << offset;
+
+        let updated = (current & !shifted_mask) | ((value & mask) << offset);
+
+        self.write_reg(i2c, reg, updated)
+    }
+
+    pub fn write_reg_bits(
+        &self,
+        i2c: &mut I2c<'_, Blocking>,
+        reg: u16,
+        mask: u8,
+        enable: bool,
+    ) -> Result<(), Error> {
+        self.set_reg_bits(i2c, reg, 0, mask, if enable { mask } else { 0 })
+    }
+
     pub fn read_id(&self, i2c: &mut I2c<'_, Blocking>) -> Result<u16, Error> {
         let high = self.read_reg(i2c, PID_HIGH)?;
         let low = self.read_reg(i2c, PID_LOW)?;
