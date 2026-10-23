@@ -9,6 +9,7 @@ state machine.
 
 - Espressif ESP32-S3 (only)
 - ov2640 sensor (optional feature)
+- ov3660 sensor (optional feature; JPEG QVGA support)
 
 Tested with:
 - Freenove ESP32-S3 WROOM-1
@@ -80,14 +81,17 @@ loop {
 | Feature     | Description                                                                                                  |
 |-------------|--------------------------------------------------------------------------------------------------------------|
 | `defmt`     | Enables `defmt` logging throughout the driver                                                                |
-| `ov2640`    | Enables the OV2640 sensor driver (SCCB init, register/table map). See see [`docs/OV2640.md`](docs/OV2640.md) |
+| `ov2640`    | Enables the OV2640 sensor driver (SCCB init, register/table map). See [`docs/OV2640.md`](docs/OV2640.md)     |
+| `ov3660`    | Enables the OV3660 sensor driver (SCCB initialization and JPEG QVGA configuration)                           |
 | `jfif`      | Enables the streaming JPEG frame extractor (`JpegStreamParser`)                                              |
 | `psram_dma` | Enables PSRAM-backed DMA buffer support                                                                      |
 
 
 ## Examples
 
-Runnable examples target the **ESP32-S3-CAM** (Freenove-style OV2640 board):
+Runnable examples target **ESP32-S3** camera boards. OV2640 examples use
+the original board configuration; OV3660 examples were tested on a
+Freenove ESP32-S3 camera board.
 
 | Example             | Output                                                                   | Required features   |
 |---------------------|--------------------------------------------------------------------------|---------------------|
@@ -95,6 +99,8 @@ Runnable examples target the **ESP32-S3-CAM** (Freenove-style OV2640 board):
 | `capture_yuv422`    | Raw YUV422 (YUYV) scan lines via DMA (BMP dump)                          | `ov2640,defmt`      |
 | `capture_jpeg`      | OV2640 JPEG mode → `JpegStreamParser` extracts SOI…EOI frames (hex dump) | `ov2640,jfif,defmt` |
 | `http_mjpeg_server` | OV2640 JPEG → `JpegStreamParser` → MJPEG over HTTP/WiFi                  | `ov2640,jfif,defmt` |
+| `detect_ov3660`     | Detect OV3660 sensor via SCCB and report its product ID                  | `ov3660,defmt`      |
+| `capture_ov3660`    | OV3660 JPEG QVGA → async DMA → JPEG extraction (hex dump)                | `ov3660,jfif,defmt` |
 
 ### Wiring (ESP32-S3-CAM / Freenove pinout)
 
@@ -140,9 +146,9 @@ It cannot be built with the standard stable/nightly Rust toolchain.
 
 Tested with:
 
-- **MCU**: ESP32-S3-WROOM-1-N8R8
-- **Sensor**: OV2640 connected via 8-bit DVP (HREF/VSYNC/PCLK)
-- **Interface**: LCD-CAM peripheral + GDMA
+- **MCU**: ESP32-S3-WROOM-1 (N8R8 and 16 MB flash / 8 MB PSRAM configurations)
+- **Sensors**: OV2640 and OV3660 (feature-dependent)
+- **Interface**: 8-bit DVP (HREF/VSYNC/PCLK) via LCD-CAM + GDMA
 
 ## License
 
