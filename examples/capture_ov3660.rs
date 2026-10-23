@@ -15,7 +15,7 @@ use embedded_hal::delay::DelayNs;
 use esp32s3_cam_async::{
     AsyncCameraDriver, CameraCapture, CaptureConfig, ConverterMode,
     jfif::{JpegStreamParser, ParserProgressing},
-    ov3660::{Ov3660, OV3660_PID},
+    ov3660::{OV3660_PID, Ov3660},
 };
 
 use esp_hal::{
@@ -44,8 +44,7 @@ const DMA_BLOCK: usize = 512;
 const JPEG_BUF_SIZE: usize = 64 * 1024;
 const HEX_ROW: usize = 64;
 
-static EXECUTOR: StaticCell<esp_rtos::embassy::Executor> =
-    StaticCell::new();
+static EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -91,13 +90,10 @@ fn main() -> ! {
     .expect("Camera setup failed");
 
     // SCCB interface.
-    let i2c = esp_hal::i2c::master::I2c::new(
-        p.I2C0,
-        esp_hal::i2c::master::Config::default(),
-    )
-    .unwrap()
-    .with_sda(p.GPIO4)
-    .with_scl(p.GPIO5);
+    let i2c = esp_hal::i2c::master::I2c::new(p.I2C0, esp_hal::i2c::master::Config::default())
+        .unwrap()
+        .with_sda(p.GPIO4)
+        .with_scl(p.GPIO5);
 
     let executor = EXECUTOR.init(esp_rtos::embassy::Executor::new());
 
@@ -152,14 +148,9 @@ async fn capture_task(
     );
 
     // Set up DMA capture and the JPEG stream parser.
-    let cam_buf: DmaRxStreamBuf =
-        dma_rx_stream_buffer!(DMA_SIZE, DMA_BLOCK);
+    let cam_buf: DmaRxStreamBuf = dma_rx_stream_buffer!(DMA_SIZE, DMA_BLOCK);
 
-    let mut capture = CameraCapture::new(
-        camera,
-        cam_buf,
-        CaptureConfig::default(),
-    );
+    let mut capture = CameraCapture::new(camera, cam_buf, CaptureConfig::default());
 
     capture.start().expect("DMA capture failed");
 
@@ -191,13 +182,8 @@ async fn capture_task(
                 Ok(ParserProgressing::EndOfImage) => {
                     let frame = &jpeg_out[..parser.bytes_written()];
 
-                    if frame.starts_with(&[0xFF, 0xD8])
-                        && frame.ends_with(&[0xFF, 0xD9])
-                    {
-                        defmt::info!(
-                            "JPEG frame captured: {} bytes",
-                            frame.len()
-                        );
+                    if frame.starts_with(&[0xFF, 0xD8]) && frame.ends_with(&[0xFF, 0xD9]) {
+                        defmt::info!("JPEG frame captured: {} bytes", frame.len());
 
                         capture.stop_capture();
                         dump_frame_hex(frame);
@@ -235,21 +221,26 @@ fn configure_manual_white_balance(
     sensor: &Ov3660,
     i2c: &mut esp_hal::i2c::master::I2c<'_, esp_hal::Blocking>,
 ) {
+    // Espressif's Sunny white balance preset.
+    const SUNNY_WB: &[(u16, u8)] = &[
+        (0x3400, 0x05), // Red high
+        (0x3401, 0xE0), // Red low
+        (0x3402, 0x04), // Green high
+        (0x3403, 0x10), // Green low
+        (0x3404, 0x05), // Blue high
+        (0x3405, 0x40), // Blue low
+    ];
+
+    // Enable manual white balance.
     sensor
         .write_reg(i2c, 0x3406, 0x01)
         .expect("Failed to enable manual white balance");
 
-    sensor
-        .write_reg16(i2c, 0x3400, 0x05E0)
-        .expect("Red gain configuration failed");
-
-    sensor
-        .write_reg16(i2c, 0x3402, 0x0410)
-        .expect("Green gain configuration failed");
-
-    sensor
-        .write_reg16(i2c, 0x3404, 0x0540)
-        .expect("Blue gain configuration failed");
+    for &(reg, value) in SUNNY_WB {
+        sensor
+            .write_reg(i2c, reg, value)
+            .expect("White balance register write failed");
+    }
 }
 
 /// Print a complete JPEG as hexadecimal for host-side reconstruction.
@@ -264,8 +255,7 @@ fn dump_frame_hex(jpeg: &[u8]) {
             hex[i * 2 + 1] = hex_digit(byte & 0x0F);
         }
 
-        let line = core::str::from_utf8(&hex[..row.len() * 2])
-            .expect("Invalid hex encoding");
+        let line = core::str::from_utf8(&hex[..row.len() * 2]).expect("Invalid hex encoding");
 
         defmt::info!("PHOTOHEX {=str}", line);
     }
