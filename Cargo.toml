@@ -134,4 +134,4 @@ required-features = ["ov3660", "defmt"]
 [[example]]
 name = "capture_ov3660"
 test = false
-required-features = ["ov3660", "defmt"]
+required-features = ["ov3660", "jfif", "defmt"]

@@ -1,27 +1,51 @@
-//! Detect an OV3660 sensor over SCCB on Freenove ESP32-S3.
+//! Capture a JPEG frame from an OV3660 on a Freenove ESP32-S3.
 //!
-//! Expected sensor address: 0x3C
-//! Expected PID: 0x3660
+//! Configures the sensor for QVGA (320x240) JPEG output, captures one
+//! frame using asynchronous DMA, and prints it as hexadecimal over UART.
+//!
+//! The hex output can be reconstructed into a JPEG file on the host.
+//!
+//! Requires the `ov3660`, `jfif`, and `defmt` features.
 
 #![no_std]
 #![no_main]
 
+use embedded_hal::delay::DelayNs;
+
 use esp32s3_cam_async::{
+    AsyncCameraDriver, CameraCapture, CaptureConfig, ConverterMode,
+    jfif::{JpegStreamParser, ParserProgressing},
     ov3660::{Ov3660, OV3660_PID},
-    AsyncCameraDriver, ConverterMode,
 };
 
 use esp_hal::{
-    dma::DmaChannel,
+    dma::{DmaChannel, DmaRxStreamBuf},
+    dma_rx_stream_buffer,
+    interrupt::software::SoftwareInterruptControl,
     lcd_cam::{
-        cam::{Config as CamConfig, EofMode, VhdeMode, VsyncFilterThreshold},
         ByteOrder,
+        cam::{Config as CamConfig, EofMode, VhdeMode, VsyncFilterThreshold},
     },
     time::Rate,
+    timer::timg::TimerGroup,
 };
+
+use static_cell::StaticCell;
 
 use esp_backtrace as _;
 use esp_println as _;
+
+const JPEG_WIDTH: u16 = 320;
+const JPEG_HEIGHT: u16 = 240;
+const JPEG_QUALITY: u8 = 12;
+
+const DMA_SIZE: usize = 4096;
+const DMA_BLOCK: usize = 512;
+const JPEG_BUF_SIZE: usize = 64 * 1024;
+const HEX_ROW: usize = 64;
+
+static EXECUTOR: StaticCell<esp_rtos::embassy::Executor> =
+    StaticCell::new();
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -29,9 +53,15 @@ esp_bootloader_esp_idf::esp_app_desc!();
 fn main() -> ! {
     let p = esp_hal::init(esp_hal::Config::default());
 
-    defmt::info!("boot: OV3660 sensor detection");
+    defmt::info!("boot: OV3660 JPEG capture");
 
-    // Configure LCD_CAM and the sensor master clock (XCLK).
+    // Initialize the Embassy runtime.
+    let timg0 = TimerGroup::new(p.TIMG0);
+    let sw_int = SoftwareInterruptControl::new(p.SW_INTERRUPT);
+
+    esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
+
+    // Configure LCD_CAM and the sensor clock (XCLK).
     let cam_config = CamConfig::default()
         .with_frequency(Rate::from_mhz(10))
         .with_eof_mode(EofMode::VsyncSignal)
@@ -40,7 +70,7 @@ fn main() -> ! {
         .with_byte_order(ByteOrder::Native)
         .with_enable_2byte_mode(false);
 
-    let _camera = AsyncCameraDriver::new(
+    let camera = AsyncCameraDriver::new(
         p.LCD_CAM,
         p.DMA_CH0.split().0,
         cam_config,
@@ -58,109 +88,194 @@ fn main() -> ! {
         p.GPIO17, // D6
         p.GPIO16, // D7
     )
-    .unwrap();
+    .expect("Camera setup failed");
 
-    defmt::info!("Camera clock configured");
+    // SCCB interface.
+    let i2c = esp_hal::i2c::master::I2c::new(
+        p.I2C0,
+        esp_hal::i2c::master::Config::default(),
+    )
+    .unwrap()
+    .with_sda(p.GPIO4)
+    .with_scl(p.GPIO5);
 
-    let mut i2c = esp_hal::i2c::master::I2c::new(p.I2C0, esp_hal::i2c::master::Config::default())
-        .unwrap()
-        .with_sda(p.GPIO4)
-        .with_scl(p.GPIO5);
+    let executor = EXECUTOR.init(esp_rtos::embassy::Executor::new());
 
+    executor.run(|spawner| {
+        spawner.spawn(capture_task(camera, i2c).unwrap());
+    });
+}
+
+#[embassy_executor::task]
+async fn capture_task(
+    camera: AsyncCameraDriver<'static>,
+    mut i2c: esp_hal::i2c::master::I2c<'static, esp_hal::Blocking>,
+) {
     let sensor = Ov3660::new();
-
     let mut delay = esp_hal::delay::Delay::new();
 
-    // Allow the sensor to stabilize after XCLK starts.
-    delay.delay_millis(100u32);
+    // Allow XCLK and the sensor to stabilize.
+    delay.delay_ms(100);
 
-    // Verify the sensor before initialization.
-    match sensor.read_id(&mut i2c) {
-        Ok(OV3660_PID) => {
-            defmt::info!("OV3660 detected: PID=0x3660");
-        }
-        Ok(pid) => {
-            defmt::error!("Unexpected sensor PID: 0x{:04x}", pid);
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-        Err(err) => {
-            defmt::error!("Sensor detection failed: {:?}", defmt::Debug2Format(&err));
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    }
+    let pid = sensor.read_id(&mut i2c).expect("Sensor ID read failed");
+    assert_eq!(pid, OV3660_PID, "Unexpected camera sensor");
 
-    // Apply OV3660 default register configuration.
-    defmt::info!("Initializing OV3660...");
+    defmt::info!("OV3660 detected: 0x{:04x}", pid);
 
-    match sensor.init(&mut i2c, &mut delay) {
-        Ok(()) => {
-            defmt::info!("OV3660 initialization completed");
-        }
-        Err(err) => {
-            defmt::error!(
-                "OV3660 initialization failed: {:?}",
-                defmt::Debug2Format(&err)
-            );
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    }
+    // Initialize and configure JPEG output.
+    sensor
+        .init(&mut i2c, &mut delay)
+        .expect("Sensor initialization failed");
 
-    defmt::info!("Configuring JPEG format...");
     sensor
         .set_jpeg_format(&mut i2c, &mut delay)
         .expect("JPEG format configuration failed");
 
-    defmt::info!("Configuring QVGA 320x240...");
     sensor
         .set_framesize_qvga(&mut i2c)
         .expect("QVGA configuration failed");
 
-    defmt::info!("Configuring JPEG quality...");
     sensor
-        .set_jpeg_quality(&mut i2c, 12)
+        .set_jpeg_quality(&mut i2c, JPEG_QUALITY)
         .expect("JPEG quality configuration failed");
 
-    defmt::info!("OV3660 JPEG QVGA configuration completed");
+    // Temporary workaround: the automatic white balance configuration
+    // currently produces a strong green cast on the tested Freenove board.
+    // Use Espressif's Sunny preset until automatic WB is validated.
+    configure_manual_white_balance(&sensor, &mut i2c);
 
-    let width_high = sensor.read_reg(&mut i2c, 0x3808).unwrap();
-    let width_low = sensor.read_reg(&mut i2c, 0x3809).unwrap();
+    defmt::info!(
+        "OV3660 configured: JPEG {}x{}, quality {}",
+        JPEG_WIDTH,
+        JPEG_HEIGHT,
+        JPEG_QUALITY
+    );
 
-    let height_high = sensor.read_reg(&mut i2c, 0x380A).unwrap();
-    let height_low = sensor.read_reg(&mut i2c, 0x380B).unwrap();
+    // Set up DMA capture and the JPEG stream parser.
+    let cam_buf: DmaRxStreamBuf =
+        dma_rx_stream_buffer!(DMA_SIZE, DMA_BLOCK);
 
-    let width = u16::from_be_bytes([width_high, width_low]);
-    let height = u16::from_be_bytes([height_high, height_low]);
+    let mut capture = CameraCapture::new(
+        camera,
+        cam_buf,
+        CaptureConfig::default(),
+    );
 
-    defmt::info!("Output dimensions: {}x{}", width, height);
+    capture.start().expect("DMA capture failed");
 
-    if width == 320 && height == 240 {
-        defmt::info!("QVGA register verification: PASS");
-    } else {
-        defmt::error!("QVGA register verification: FAIL");
-    }
+    defmt::info!("Waiting for JPEG frame...");
 
-    defmt::info!("Configuring JPEG format...");
-
-    // Check that the sensor remains responsive after initialization.
-    match sensor.read_id(&mut i2c) {
-        Ok(OV3660_PID) => {
-            defmt::info!("OV3660 post-init PID check: PASS");
-        }
-        Ok(pid) => {
-            defmt::error!("Unexpected post-init PID: 0x{:04x}", pid);
-        }
-        Err(err) => {
-            defmt::error!("Post-init PID read failed: {:?}", defmt::Debug2Format(&err));
-        }
-    }
+    let mut dma_chunk = [0u8; DMA_SIZE];
+    let mut jpeg_out = [0u8; JPEG_BUF_SIZE];
+    let mut parser = JpegStreamParser::default();
 
     loop {
-        core::hint::spin_loop();
+        let result = capture.next_chunk(&mut dma_chunk).await;
+
+        if result.resyncing {
+            parser.reset_state();
+            continue;
+        }
+
+        if result.len == 0 {
+            continue;
+        }
+
+        let chunk = &dma_chunk[..result.len];
+        parser.reset_input_offset();
+
+        loop {
+            match parser.parse(chunk, &mut jpeg_out) {
+                Ok(ParserProgressing::InputBufferEmpty) => break,
+
+                Ok(ParserProgressing::EndOfImage) => {
+                    let frame = &jpeg_out[..parser.bytes_written()];
+
+                    if frame.starts_with(&[0xFF, 0xD8])
+                        && frame.ends_with(&[0xFF, 0xD9])
+                    {
+                        defmt::info!(
+                            "JPEG frame captured: {} bytes",
+                            frame.len()
+                        );
+
+                        capture.stop_capture();
+                        dump_frame_hex(frame);
+
+                        defmt::info!("Capture complete");
+                        return;
+                    }
+
+                    defmt::warn!("Invalid JPEG boundaries");
+                    parser.reset_state();
+                    break;
+                }
+
+                Ok(ParserProgressing::OutputBufferFull) => {
+                    defmt::warn!("JPEG output buffer full");
+                    parser.reset_state();
+                    break;
+                }
+
+                Err(state) => {
+                    // The parser resets itself after structural errors.
+                    defmt::warn!("JPEG parser error: {:?}", state);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Apply Espressif's Sunny white balance preset.
+///
+/// This is a temporary capture-example workaround, not a replacement
+/// for automatic white balance support in the sensor driver.
+fn configure_manual_white_balance(
+    sensor: &Ov3660,
+    i2c: &mut esp_hal::i2c::master::I2c<'_, esp_hal::Blocking>,
+) {
+    sensor
+        .write_reg(i2c, 0x3406, 0x01)
+        .expect("Failed to enable manual white balance");
+
+    sensor
+        .write_reg16(i2c, 0x3400, 0x05E0)
+        .expect("Red gain configuration failed");
+
+    sensor
+        .write_reg16(i2c, 0x3402, 0x0410)
+        .expect("Green gain configuration failed");
+
+    sensor
+        .write_reg16(i2c, 0x3404, 0x0540)
+        .expect("Blue gain configuration failed");
+}
+
+/// Print a complete JPEG as hexadecimal for host-side reconstruction.
+fn dump_frame_hex(jpeg: &[u8]) {
+    defmt::info!("PHOTO_BEGIN {}", jpeg.len());
+
+    for row in jpeg.chunks(HEX_ROW) {
+        let mut hex = [0u8; HEX_ROW * 2];
+
+        for (i, &byte) in row.iter().enumerate() {
+            hex[i * 2] = hex_digit(byte >> 4);
+            hex[i * 2 + 1] = hex_digit(byte & 0x0F);
+        }
+
+        let line = core::str::from_utf8(&hex[..row.len() * 2])
+            .expect("Invalid hex encoding");
+
+        defmt::info!("PHOTOHEX {=str}", line);
+    }
+
+    defmt::info!("PHOTO_END");
+}
+
+fn hex_digit(value: u8) -> u8 {
+    match value {
+        0..=9 => b'0' + value,
+        _ => b'a' + value - 10,
     }
 }
