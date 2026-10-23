@@ -198,9 +198,9 @@ async fn capture_task(
                 }
 
                 Ok(ParserProgressing::OutputBufferFull) => {
-                    defmt::warn!("JPEG output buffer full");
-                    parser.reset_state();
-                    break;
+                    capture.stop_capture();
+                    defmt::error!("JPEG frame exceeds output buffer");
+                    return;
                 }
 
                 Err(state) => {

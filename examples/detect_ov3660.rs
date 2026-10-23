@@ -69,7 +69,7 @@ fn main() -> ! {
 
     let sensor = Ov3660::new();
 
-    let mut delay = esp_hal::delay::Delay::new();
+    let delay = esp_hal::delay::Delay::new();
 
     // Allow the sensor to stabilize after XCLK starts.
     delay.delay_millis(100u32);
