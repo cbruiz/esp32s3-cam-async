@@ -3,6 +3,7 @@
 //! SPDX-License-Identifier: Apache-2.0
 //! Modified: converted C register pairs and sentinels to typed Rust operations.
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub struct RatioSettings {
     pub max_width: u16,
@@ -17,6 +18,8 @@ pub struct RatioSettings {
     pub total_y: u16,
 }
 
+// Keep the complete Espressif ratio definitions for future frame sizes.
+#[allow(dead_code)]
 impl RatioSettings {
     pub const RATIO_4X3: Self = Self {
         max_width: 2048,
