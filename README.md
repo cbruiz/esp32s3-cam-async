@@ -82,7 +82,7 @@ loop {
 |-------------|--------------------------------------------------------------------------------------------------------------|
 | `defmt`     | Enables `defmt` logging throughout the driver                                                                |
 | `ov2640`    | Enables the OV2640 sensor driver (SCCB init, register/table map). See [`docs/OV2640.md`](docs/OV2640.md)     |
-| `ov3660`    | Enables the OV3660 sensor driver (SCCB initialization and JPEG QVGA configuration)                           |
+| `ov3660`    | Enables the OV3660 sensor driver (SCCB init and JPEG QVGA config). See [`docs/OV3660.md`](docs/OV3660.md)    |
 | `jfif`      | Enables the streaming JPEG frame extractor (`JpegStreamParser`)                                              |
 | `psram_dma` | Enables PSRAM-backed DMA buffer support                                                                      |
 
