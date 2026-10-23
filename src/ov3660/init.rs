@@ -7,13 +7,10 @@ use esp_hal::{
 };
 
 use super::{
-    tables::{DEFAULT_REGS, JPEG_REGS},
+    registers::*,
+    tables::{RatioSettings, DEFAULT_REGS, JPEG_REGS},
     Ov3660,
 };
-
-use super::tables::RatioSettings;
-
-use super::registers::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FrameGeometry {
@@ -45,47 +42,13 @@ struct PllConfig {
 }
 
 impl PllConfig {
-    fn calc_sysclk(&self, xclk_hz: u32) -> ClockFrequencies {
-        const PRE_DIV_2X: [u64; 4] = [2, 3, 4, 6];
-        const SELD5_2X: [u64; 4] = [2, 2, 4, 5];
-
-        let pre_div = PRE_DIV_2X[self.pre_div as usize];
-        let seld5 = SELD5_2X[self.seld5 as usize];
-
-        let root_div = if self.root_2x { 2u64 } else { 1 };
-        let sys_div = u64::from(self.sys_div.max(1));
-
-        // Reference calculation uses kHz to avoid floating point.
-        let vco_khz =
-            (u64::from(xclk_hz) / 1000) * u64::from(self.multiplier) * root_div * 2 / pre_div;
-
-        let pllclk_hz = if self.bypass {
-            u64::from(xclk_hz)
-        } else {
-            vco_khz * 1000 * 2 / sys_div / seld5
-        };
-
-        let pclk_div = if self.pclk_manual && self.pclk_div != 0 {
-            u64::from(self.pclk_div)
-        } else {
-            1
-        };
-
-        ClockFrequencies {
-            vco_hz: vco_khz * 1000,
-            pllclk_hz,
-            sysclk_hz: pllclk_hz / 4,
-            pclk_hz: pllclk_hz / 2 / pclk_div,
-        }
+    fn is_valid(&self) -> bool {
+        self.multiplier <= 31
+            && self.sys_div <= 15
+            && self.pre_div <= 3
+            && self.seld5 <= 3
+            && self.pclk_div <= 31
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct ClockFrequencies {
-    vco_hz: u64,
-    pllclk_hz: u64,
-    sysclk_hz: u64,
-    pclk_hz: u64,
 }
 
 impl Ov3660 {
@@ -215,11 +178,7 @@ impl Ov3660 {
 
     fn set_pll(&self, i2c: &mut I2c<'_, Blocking>, config: PllConfig) -> Result<(), Error> {
         // Register field limits from the OV3660 reference driver.
-        debug_assert!(config.multiplier <= 31);
-        debug_assert!(config.sys_div <= 15);
-        debug_assert!(config.pre_div <= 3);
-        debug_assert!(config.seld5 <= 3);
-        debug_assert!(config.pclk_div <= 31);
+        assert!(config.is_valid(), "Invalid OV3660 PLL configuration");
 
         self.write_reg(i2c, SC_PLLS_CTRL0, if config.bypass { 0x80 } else { 0x00 })?;
 

@@ -70,7 +70,6 @@ impl RatioSettings {
         total_y: 1372,
     };
 
-    // { 1920, 1080,  64, 242, 2015, 1333, 16, 6, 2172, 1322 }, //16x9
     pub const RATIO_16X9: Self = Self {
         max_width: 1920,
         max_height: 1080,
@@ -84,7 +83,6 @@ impl RatioSettings {
         total_y: 1322,
     };
 
-    // { 2048,  880,   0, 328, 2079, 1219, 16, 6, 2300, 1236 }, //21x9
     pub const RATIO_21X9: Self = Self {
         max_width: 2048,
         max_height: 880,
@@ -98,7 +96,6 @@ impl RatioSettings {
         total_y: 1236,
     };
 
-    // { 1920, 1536,  64,   0, 2015, 1547, 16, 6, 2172, 1564 }, //5x4
     pub const RATIO_5X4: Self = Self {
         max_width: 1920,
         max_height: 1536,
@@ -112,7 +109,6 @@ impl RatioSettings {
         total_y: 1564,
     };
 
-    // { 1536, 1536, 256,   0, 1823, 1547, 16, 6, 2044, 1564 }, //1x1
     pub const RATIO_1X1: Self = Self {
         max_width: 1536,
         max_height: 1536,
@@ -126,7 +122,6 @@ impl RatioSettings {
         total_y: 1564,
     };
 
-    // {  864, 1536, 592,   0, 1487, 1547, 16, 6, 2044, 1564 }  //9x16
     pub const RATIO_9X16: Self = Self {
         max_width: 864,
         max_height: 1536,
