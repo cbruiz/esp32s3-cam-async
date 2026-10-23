@@ -1,3 +1,10 @@
+//! OV3660 image sensor support.
+//!
+//! SCCB configuration and JPEG QVGA capture support for ESP32-S3.
+//!
+//! Register definitions and initialization logic are derived from
+//! Espressif's esp32-camera and the OpenMV OV3660 driver.
+
 mod driver;
 mod init;
 pub mod registers;

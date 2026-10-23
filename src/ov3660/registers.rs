@@ -1,6 +1,9 @@
 //! OV3660 register definitions.
 //!
-//! Ported from `ov3660_regs.h` in espressif/esp32-camera.
+//! Ported from `sensors/private_include/ov3660_regs.h`
+//! in Espressif's esp32-camera.
+//!
+//! SPDX-License-Identifier: Apache-2.0
 
 // System control registers
 

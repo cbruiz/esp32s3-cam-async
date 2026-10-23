@@ -1,4 +1,14 @@
-//! OV3660 SCCB register access and sensor control.
+//! OV3660 SCCB register access.
+//!
+//! Adapted from the OV3660 driver in Espressif's esp32-camera,
+//! originally part of the OpenMV project.
+//!
+//! Original work:
+//! Copyright (c) 2013/2014 Ibrahim Abdelkader
+//! Licensed under the MIT License.
+//!
+//! Adapted to Rust and embedded-hal for ESP32-S3.
+//! SPDX-License-Identifier: MIT
 
 use embedded_hal::delay::DelayNs;
 use esp_hal::{

@@ -1,7 +1,12 @@
-//! OV3660 configuration sequences ported from Espressif esp32-camera.
-//! Source: sensors/private_include/ov3660_settings.h
+//! OV3660 configuration sequences.
+//!
+//! Ported from `sensors/private_include/ov3660_settings.h`
+//! in Espressif's esp32-camera.
+//!
+//! Original register values and ordering are preserved.
+//! C register pairs and sentinels were converted to typed Rust operations.
+//!
 //! SPDX-License-Identifier: Apache-2.0
-//! Modified: converted C register pairs and sentinels to typed Rust operations.
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
